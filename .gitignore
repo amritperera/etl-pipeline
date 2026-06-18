@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+venv/
+.venv/
+
+# Data files
+data/raw/
+data/processed/
+
+# DuckDB
+*.duckdb
+
+# Logs
+logs/
+
+# IDE
+.vscode/
+.idea/
