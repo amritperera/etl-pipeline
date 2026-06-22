@@ -9,6 +9,64 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def validate_neo_data(con) -> None:
+    """
+    Run data quality checks against fct_neo.
+    Raises an exception if any check fails.
+    """
+    checks_passed = []
+    checks_failed = []
+
+    # check 1: no null neo_ids
+    null_ids = con.execute(
+        "SELECT COUNT(*) FROM fct_neo WHERE neo_id IS NULL"
+    ).fetchone()[0]
+    if null_ids == 0:
+        checks_passed.append("No null neo_ids")
+    else:
+        checks_failed.append(f"{null_ids} rows with null neo_id")
+
+    # check 2: no duplicate neo_ids
+    dupes = con.execute("""
+        SELECT COUNT(*) FROM (
+            SELECT neo_id, COUNT(*) as cnt
+            FROM fct_neo
+            GROUP BY neo_id
+            HAVING cnt > 1
+        )
+    """).fetchone()[0]
+    if dupes == 0:
+        checks_passed.append("No duplicate neo_ids")
+    else:
+        checks_failed.append(f"{dupes} duplicate neo_ids found")
+
+    # check 3: miss_distance_km should never be negative
+    negative_distance = con.execute(
+        "SELECT COUNT(*) FROM fct_neo WHERE miss_distance_km < 0"
+    ).fetchone()[0]
+    if negative_distance == 0:
+        checks_passed.append("No negative miss distances")
+    else:
+        checks_failed.append(f"{negative_distance} rows with negative miss_distance_km")
+
+    # check 4: diameter values should be positive
+    bad_diameter = con.execute(
+        "SELECT COUNT(*) FROM fct_neo WHERE avg_diameter_km <= 0"
+    ).fetchone()[0]
+    if bad_diameter == 0:
+        checks_passed.append("All diameters positive")
+    else:
+        checks_failed.append(f"{bad_diameter} rows with zero/negative diameter")
+
+    logger.info(f"Validation passed: {len(checks_passed)} checks")
+    for check in checks_passed:
+        logger.info(f"  ✓ {check}")
+
+    if checks_failed:
+        logger.error(f"Validation FAILED: {len(checks_failed)} checks")
+        for check in checks_failed:
+            logger.error(f"  ✗ {check}")
+        raise ValueError(f"Data validation failed: {checks_failed}")
 
 def transform_neo(db_path: str) -> None:
     """
@@ -83,6 +141,9 @@ def transform_neo(db_path: str) -> None:
     ).fetchone()[0]
 
     logger.info(f"fct_neo: {count} total objects, {hazard_count} potentially hazardous")
+
+    # run validation checks
+    validate_neo_data(con)
 
     con.close()
 
