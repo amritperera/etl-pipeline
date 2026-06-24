@@ -5,9 +5,11 @@ import os
 import logging
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
+import os as _os
 
-# load environment variables
-load_dotenv()
+# load environment variables — look in the project root explicitly
+_env_path = _os.path.join(_os.path.dirname(__file__), "..", "..", ".env")
+load_dotenv(_env_path)
 API_KEY = os.getenv("NASA_API_KEY")
 
 # set up logging
@@ -75,35 +77,36 @@ def load_to_duckdb(df: pd.DataFrame, db_path: str) -> None:
     """
     con = duckdb.connect(db_path)
 
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS raw_neo (
-            neo_id                   VARCHAR,
-            neo_name                 VARCHAR,
-            nasa_jpl_url             VARCHAR,
-            is_potentially_hazardous BOOLEAN,
-            is_sentry_object         BOOLEAN,
-            abs_magnitude            DOUBLE,
-            min_diameter_km          DOUBLE,
-            max_diameter_km          DOUBLE,
-            close_approach_date      VARCHAR,
-            relative_velocity_kmh    DOUBLE,
-            miss_distance_km         DOUBLE,
-            orbiting_body            VARCHAR,
-            ingested_at              VARCHAR
-        )
-    """)
+    try:
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS raw_neo (
+                neo_id                   VARCHAR,
+                neo_name                 VARCHAR,
+                nasa_jpl_url             VARCHAR,
+                is_potentially_hazardous BOOLEAN,
+                is_sentry_object         BOOLEAN,
+                abs_magnitude            DOUBLE,
+                min_diameter_km          DOUBLE,
+                max_diameter_km          DOUBLE,
+                close_approach_date      VARCHAR,
+                relative_velocity_kmh    DOUBLE,
+                miss_distance_km         DOUBLE,
+                orbiting_body            VARCHAR,
+                ingested_at              VARCHAR
+            )
+        """)
 
-    # avoid duplicates on re-run
-    existing_ids = con.execute("SELECT neo_id FROM raw_neo").fetchdf()["neo_id"].tolist()
-    new_records = df[~df["neo_id"].isin(existing_ids)]
+        # avoid duplicates on re-run
+        existing_ids = con.execute("SELECT neo_id FROM raw_neo").fetchdf()["neo_id"].tolist()
+        new_records = df[~df["neo_id"].isin(existing_ids)]
 
-    if len(new_records) > 0:
-        con.execute("INSERT INTO raw_neo SELECT * FROM new_records")
-        logger.info(f"Inserted {len(new_records)} new records into raw_neo")
-    else:
-        logger.info("No new records to insert — all already exist")
-
-    con.close()
+        if len(new_records) > 0:
+            con.execute("INSERT INTO raw_neo SELECT * FROM new_records")
+            logger.info(f"Inserted {len(new_records)} new records into raw_neo")
+        else:
+            logger.info("No new records to insert — all already exist")
+    finally:
+        con.close()
 
 
 if __name__ == "__main__":
